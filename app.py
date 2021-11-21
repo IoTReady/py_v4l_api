@@ -9,7 +9,7 @@ from PIL import Image, ImageStat
 from datetime import datetime
 from mdns import init_service
 
-app = flask.Flask('accumen_camera')
+app = flask.Flask(__name__)
 log = logging.getLogger(__name__)
 
 cam = None
@@ -52,7 +52,7 @@ g_contrast_control_max = 48
 g_contrast_control_step = 2
 
 g_max_attempts = 20
-attempts = 0
+
 
 def success(result):
     payload = {"ok": True, **result}
@@ -111,7 +111,6 @@ def calc_optimal_exposure():
     global best_brightness_diff
     global best_fpath
     global best_brightness
-    global attempts
     g_exposure_absolute = g_exposure_absolute_min
     r1 = capture_and_calculate()
     g_exposure_absolute = g_exposure_absolute_max
@@ -119,15 +118,17 @@ def calc_optimal_exposure():
     best_brightness_diff = 1E10
     best_fpath = None
     best_brightness = 0
-    attempts = 0
     r2 = capture_and_calculate()
     brightness_slope = (r2['brightness'] - r1['brightness']) / \
         (g_exposure_absolute_max - g_exposure_absolute_min)
-    brightness_intercept = r2['brightness'] - brightness_slope * g_exposure_absolute_max
-    g_exposure_absolute = int((g_brightness_optimal - brightness_intercept)/brightness_slope)
+    brightness_intercept = r2['brightness'] - \
+        brightness_slope * g_exposure_absolute_max
+    g_exposure_absolute = int(
+        (g_brightness_optimal - brightness_intercept)/brightness_slope)
     # This is a hack to account for the camera not giving us accurate images/exposures
     if g_exposure_absolute <= g_exposure_absolute_min or g_exposure_absolute >= g_exposure_absolute_max:
-        g_exposure_absolute = int((g_exposure_absolute_min + g_exposure_absolute_max)/2)
+        g_exposure_absolute = int(
+            (g_exposure_absolute_min + g_exposure_absolute_max)/2)
     print(f"\nOptimal Exposure: {g_exposure_absolute}\n")
 
 
@@ -150,8 +151,10 @@ def optimise():
     global best_exposure
     best_brightness_diff = 1E10
     ret = {}
-    for _i in range(0, g_max_attempts):
+    count = 0
+    for count in range(0, g_max_attempts):
         ret = capture_and_calculate()
+        print(f"{ret}")
         brightness = ret['brightness']
         hue = ret['hue']
         contrast = ret['contrast']
@@ -162,8 +165,8 @@ def optimise():
             # An optimisation was found
             best_brightness_diff = brightness_diff
             best_exposure = g_exposure_absolute
-            print(f"{ret}")
-        is_brightness_optimised = not(g_enable_brightness_optimisation) or abs(brightness_diff) <= g_brightness_diff
+        is_brightness_optimised = not(g_enable_brightness_optimisation) or abs(
+            brightness_diff) <= g_brightness_diff
         is_hue_optimised = not(g_enable_hue_optimisation) or abs(
             hue_diff) <= g_hue_diff
         is_contrast_optimised = not(g_enable_contrast_optimisation) or abs(
@@ -171,14 +174,14 @@ def optimise():
         if not (is_brightness_optimised and is_hue_optimised and is_contrast_optimised):
             if not is_brightness_optimised:
                 g_exposure_absolute += int((brightness_diff /
-                                        abs(brightness_diff))*g_exposure_absolute_step)
+                                            abs(brightness_diff))*g_exposure_absolute_step)
                 if g_exposure_absolute > g_exposure_absolute_max:
                     g_exposure_absolute = g_exposure_absolute_max
                 elif g_exposure_absolute < g_exposure_absolute_min:
                     g_exposure_absolute = g_exposure_absolute_min
             if not is_contrast_optimised:
                 g_contrast_control += int((contrast_diff /
-                                        abs(contrast_diff))*g_contrast_control_step)
+                                           abs(contrast_diff))*g_contrast_control_step)
                 if g_contrast_control > g_contrast_control_max:
                     g_contrast_control = g_contrast_control_max
                 elif g_contrast_control < g_contrast_control_min:
@@ -192,18 +195,20 @@ def optimise():
     image = ret.pop('image')
     image.save(fpath)
     ret['path'] = fpath
+    ret['attempts'] = count + 1
     return ret
 
 
 @app.get("/")
 def index():
-    return success(None)
+    result = {"time": datetime.now()}
+    return success(result)
 
 
-#@app.post("/")
-#def trigger():
-#    result = optimise()
-#    return success(result)
+@app.post("/")
+def trigger():
+    result = optimise()
+    return success(result)
 
 
 def start(
@@ -241,7 +246,7 @@ def start(
     logfile: str = "accumen_camera.log",
 ):
     if version:
-        print("0.0.1")
+        print("0.1.0")
         exit(0)
     global g_path
     global g_xoffset
@@ -301,19 +306,15 @@ def start(
         init_service(host=None, port=port, name=servicename)
     else:
         init_service(host=host, port=port, name=servicename)
+    print("Starting Camera")
     with Device.from_id(device) as cam:
-        print("Starting Camera")
         cam.video_capture.set_format(width, height, "MJPG")
         stream = iter(cam)
-        try:
-            for i in range(skip):
-                print("Skipping")
-                next(stream)
-        except Exception as e:
-            print(str(e))
-        app.run(host=host, port=port, debug=True)
+        for i in range(skip):
+            next(stream)
+        calc_optimal_exposure()
+        app.run(host=host, port=port)
 
 
 if __name__ == "__main__":
     typer.run(start)
-
