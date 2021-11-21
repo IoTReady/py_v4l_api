@@ -9,7 +9,7 @@ from PIL import Image, ImageStat
 from datetime import datetime
 from mdns import init_service
 
-app = flask.Flask('basic-web-cam')
+app = flask.Flask('accumen_camera')
 log = logging.getLogger(__name__)
 
 cam = None
@@ -133,12 +133,10 @@ def calc_optimal_exposure():
 
 def capture_and_calculate():
     image = Image.open(BytesIO(next(stream)))
-    fpath = f"{datetime.now()}.jpg"
-    image.save(fpath)
     result = {
         "exposure": g_exposure_absolute,
         "contrast_control": g_contrast_control,
-        "path": fpath,
+        "image": image,
         "brightness": estimate_brightness(image),
         "contrast": estimate_contrast(image),
         "hue": 0
@@ -151,6 +149,7 @@ def optimise():
     global g_contrast_control
     global best_exposure
     best_brightness_diff = 1E10
+    ret = {}
     for _i in range(0, g_max_attempts):
         ret = capture_and_calculate()
         brightness = ret['brightness']
@@ -188,13 +187,23 @@ def optimise():
             print("\nOptimised!\n")
             g_exposure_absolute = best_exposure
             break
+    now = int(datetime.now().timestamp())
+    fpath = f"{g_path}/{now}.jpg"
+    image = ret.pop('image')
+    image.save(fpath)
+    ret['path'] = fpath
     return ret
 
 
 @app.get("/")
 def index():
-    result = capture_and_calculate()
-    return success(result)
+    return success(None)
+
+
+#@app.post("/")
+#def trigger():
+#    result = optimise()
+#    return success(result)
 
 
 def start(
@@ -292,13 +301,17 @@ def start(
         init_service(host=None, port=port, name=servicename)
     else:
         init_service(host=host, port=port, name=servicename)
-    print("Starting Camera")
     with Device.from_id(device) as cam:
+        print("Starting Camera")
         cam.video_capture.set_format(width, height, "MJPG")
         stream = iter(cam)
-        for i in range(skip):
-            next(stream)
-        app.run(host=host, port=port)
+        try:
+            for i in range(skip):
+                print("Skipping")
+                next(stream)
+        except Exception as e:
+            print(str(e))
+        app.run(host=host, port=port, debug=True)
 
 
 if __name__ == "__main__":
