@@ -1,0 +1,4 @@
+typer
+flask
+zeroconf
+Pillow
