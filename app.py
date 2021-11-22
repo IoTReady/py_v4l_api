@@ -5,6 +5,7 @@ import typer
 from sys import exit
 from io import BytesIO
 from datetime import datetime
+from subprocess import call
 from PIL import Image, ImageStat
 from v4l2py import Device
 from mdns import init_service
@@ -16,6 +17,8 @@ cam = Device.from_id(0)
 stream = iter(cam)
 
 default_host = "0.0.0.0"
+g_width = 3264
+g_height = 2448
 g_xoffset = 408
 g_yoffset = 0
 g_path = "/tmp"
@@ -118,7 +121,7 @@ def capture_and_calculate():
     result = {
         "exposure": g_exposure_absolute,
         "contrast_control": g_contrast_control,
-        "image": image,
+        "image": image_bytes,
         "brightness": estimate_brightness(image),
         "contrast": estimate_contrast(image),
         "hue": 0
@@ -172,10 +175,12 @@ def optimise():
             g_exposure_absolute = best_exposure
             break
     now = int(datetime.now().timestamp())
+    tmppath = f"/tmp/{now}.jpg"
     fpath = f"{g_path}/{now}.jpg"
     image = ret.pop('image')
-    with open(fpath, 'wb') as f:
-        f.write(image)
+    with open(tmppath, 'wb') as f:
+        f.write(image.getbuffer())
+    call(f"convert {tmppath} -crop {g_width-2*g_xoffset}x{g_height-2*g_yoffset}+{g_xoffset}+{g_yoffset} {fpath}", shell=True)
     ret['path'] = fpath
     ret['attempts'] = count + 1
     return ret

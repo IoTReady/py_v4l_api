@@ -152,7 +152,7 @@ def read_info(fd):
         crop_caps.append(CropCapability(
             type=stream_type,
             bounds=Rect(crop.bounds.left, crop.bounds.top, crop.bounds.width, crop.bounds.height),
-            defrect=Rect(crop.defrect.left, crop.defrect.top, crop.defrect.width, crop.defrect.height),
+            defrect=Rect(crop.defrect.left, crop.defrect.top,  crop.defrect.width, crop.defrect.height),
             pixel_aspect=crop.pixelaspect.numerator/crop.pixelaspect.denominator))
 
     return Info(
@@ -244,7 +244,7 @@ class VideoCapture:
         c.height = height
         f = raw.v4l2_crop()
         f.type = self.buffer_type
-        f.c = c
+        f.c = self.crop_capabilities[0].defrect
         return self._ioctl(IOC.S_CROP, f)
 
     def set_ctrl(self, id, value):
