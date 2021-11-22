@@ -13,8 +13,8 @@ from mdns import init_service
 app = flask.Flask(__name__)
 log = logging.getLogger(__name__)
 
-cam = Device.from_id(0)
-stream = iter(cam)
+cam = None
+stream = None 
 
 default_host = "0.0.0.0"
 g_width = 3264
@@ -117,7 +117,8 @@ def capture_and_calculate():
     image = Image.open(image_bytes)
     width = image.size[0]
     height = image.size[1]
-    image = image.crop((g_xoffset, g_yoffset, width - g_xoffset, height - g_yoffset)) 
+    image = image.crop((g_xoffset, g_yoffset, width -
+                       g_xoffset, height - g_yoffset))
     result = {
         "exposure": g_exposure_absolute,
         "contrast_control": g_contrast_control,
@@ -180,6 +181,7 @@ def optimise():
     image = ret.pop('image')
     with open(tmppath, 'wb') as f:
         f.write(image.getbuffer())
+    # Only needed until we figure out how to use crop directly within v4l2
     call(f"convert {tmppath} -crop {g_width-2*g_xoffset}x{g_height-2*g_yoffset}+{g_xoffset}+{g_yoffset} {fpath}", shell=True)
     ret['path'] = fpath
     ret['attempts'] = count + 1
@@ -199,36 +201,36 @@ def trigger():
 
 
 def start(
-    host: str = default_host,
-    port: int = 8000,
-    device: int = 0,
-    width: int = 3264,
-    height: int = 2448,
-    xoffset: int = g_xoffset,
-    yoffset: int = g_yoffset,
-    skip: int = 2,
-    max_attempts: int = g_max_attempts,
-    brightness_optimal: int = g_brightness_optimal,
-    brightness_diff: int = g_brightness_diff,
-    enable_single_color_rejection: bool = g_enable_single_color_rejection,
-    enable_brightness_optimisation: bool = g_enable_brightness_optimisation,
-    enable_hue_optimisation: bool = g_enable_hue_optimisation,
-    enable_contrast_optimisation: bool = g_enable_contrast_optimisation,
-    path: str = g_path,
-    hue_optimal: int = g_hue_optimal,
-    hue_diff: int = g_hue_diff,
-    contrast_optimal: int = g_contrast_optimal,
-    contrast_diff: int = g_contrast_diff,
-    contrast_control_min: int = g_contrast_control_min,
-    contrast_control_max: int = g_contrast_control_max,
-    contrast_control_step: int = g_contrast_control_step,
-    exposure_absolute_min: int = g_exposure_absolute_min,
-    exposure_absolute_max: int = g_exposure_absolute_max,
-    exposure_absolute_step: int = g_exposure_absolute_step,
-    exposure_auto: bool = typer.Option(g_exposure_auto),
-    version: bool = typer.Option(False),
-    servicename: str = "camera",
-    logfile: str = "accumen_camera.log",
+        host: str = default_host,
+        port: int = 8000,
+        device: int = 0,
+        width: int = 3264,
+        height: int = 2448,
+        xoffset: int = g_xoffset,
+        yoffset: int = g_yoffset,
+        skip: int = 2,
+        max_attempts: int = g_max_attempts,
+        brightness_optimal: int = g_brightness_optimal,
+        brightness_diff: int = g_brightness_diff,
+        enable_single_color_rejection: bool = g_enable_single_color_rejection,
+        enable_brightness_optimisation: bool = g_enable_brightness_optimisation,
+        enable_hue_optimisation: bool = g_enable_hue_optimisation,
+        enable_contrast_optimisation: bool = g_enable_contrast_optimisation,
+        path: str = g_path,
+        hue_optimal: int = g_hue_optimal,
+        hue_diff: int = g_hue_diff,
+        contrast_optimal: int = g_contrast_optimal,
+        contrast_diff: int = g_contrast_diff,
+        contrast_control_min: int = g_contrast_control_min,
+        contrast_control_max: int = g_contrast_control_max,
+        contrast_control_step: int = g_contrast_control_step,
+        exposure_absolute_min: int = g_exposure_absolute_min,
+        exposure_absolute_max: int = g_exposure_absolute_max,
+        exposure_absolute_step: int = g_exposure_absolute_step,
+        exposure_auto: bool = typer.Option(g_exposure_auto),
+        version: bool = typer.Option(False),
+        servicename: str = "camera",
+        logfile: str = "accumen_camera.log",
 ):
     if version:
         print("0.1.0")
@@ -289,16 +291,17 @@ def start(
         init_service(host=host, port=port, name=servicename)
     print("Starting Camera")
     with Device.from_id(device) as cam:
+        # Camera is now open and locked.
         cam.video_capture.set_format(width, height, "MJPG")
         #cam.video_capture.set_crop(xoffset, yoffset, width, height)
         stream = iter(cam)
-        # Camera is opened once we call next(stream)
+        # Camera is started once we call next(stream)
         # And it's held open until we close it
         for i in range(skip):
             next(stream)
         calc_optimal_exposure()
         app.run(host=host, port=port)
-        #cam.close()
+        # cam.close()
 
 
 if __name__ == "__main__":
