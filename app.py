@@ -24,11 +24,9 @@ g_enable_single_color_rejection = True
 g_enable_brightness_optimisation = True
 g_enable_hue_optimisation = False
 g_enable_contrast_optimisation = True
-g_color_threshold = 0.99
 
 g_brightness_optimal = 37
-g_brightness_threshold = 100
-g_brightness_diff = 3
+g_brightness_diff = 2
 g_exposure_auto = False
 g_exposure_absolute = 300
 g_exposure_absolute_min = 25
@@ -110,7 +108,10 @@ def calc_optimal_exposure():
 def capture_and_calculate():
     cam.video_capture.set_exposure(g_exposure_absolute)
     cam.video_capture.set_contrast(g_contrast_control)
-    image = Image.open(BytesIO(next(stream)))
+    # Skip one frame
+    next(stream)
+    image_bytes = BytesIO(next(stream))
+    image = Image.open(image_bytes)
     width = image.size[0]
     height = image.size[1]
     image = image.crop((g_xoffset, g_yoffset, width - g_xoffset, height - g_yoffset)) 
@@ -173,7 +174,8 @@ def optimise():
     now = int(datetime.now().timestamp())
     fpath = f"{g_path}/{now}.jpg"
     image = ret.pop('image')
-    image.save(fpath)
+    with open(fpath, 'wb') as f:
+        f.write(image)
     ret['path'] = fpath
     ret['attempts'] = count + 1
     return ret
@@ -201,9 +203,7 @@ def start(
     yoffset: int = g_yoffset,
     skip: int = 2,
     max_attempts: int = g_max_attempts,
-    color_threshold: float = g_color_threshold,
     brightness_optimal: int = g_brightness_optimal,
-    brightness_threshold: int = g_brightness_threshold,
     brightness_diff: int = g_brightness_diff,
     enable_single_color_rejection: bool = g_enable_single_color_rejection,
     enable_brightness_optimisation: bool = g_enable_brightness_optimisation,
@@ -235,9 +235,7 @@ def start(
     global g_enable_brightness_optimisation
     global g_enable_hue_optimisation
     global g_enable_contrast_optimisation
-    global g_color_threshold
     global g_brightness_optimal
-    global g_brightness_threshold
     global g_brightness_diff
     global g_hue_optimal
     global g_hue_diff
@@ -259,7 +257,6 @@ def start(
     g_enable_brightness_optimisation = enable_brightness_optimisation
     g_enable_hue_optimisation = enable_hue_optimisation
     g_enable_contrast_optimisation = enable_contrast_optimisation
-    g_color_threshold = color_threshold
     g_hue_optimal = hue_optimal
     g_hue_diff = hue_diff
     g_contrast_optimal = contrast_optimal
@@ -268,7 +265,6 @@ def start(
     g_contrast_control_max = contrast_control_max
     g_contrast_control_step = contrast_control_step
     g_brightness_optimal = brightness_optimal
-    g_brightness_threshold = brightness_threshold
     g_brightness_diff = brightness_diff
     g_exposure_auto = exposure_auto
     g_exposure_absolute_min = exposure_absolute_min
@@ -289,6 +285,7 @@ def start(
     print("Starting Camera")
     with Device.from_id(device) as cam:
         cam.video_capture.set_format(width, height, "MJPG")
+        #cam.video_capture.set_crop(xoffset, yoffset, width, height)
         stream = iter(cam)
         # Camera is opened once we call next(stream)
         # And it's held open until we close it

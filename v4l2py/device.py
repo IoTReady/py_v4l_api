@@ -236,6 +236,17 @@ class VideoCapture:
             if crop.type == self.buffer_type
         ]
 
+    def set_crop(self, left, top, width, height):
+        c = raw.v4l2_rect()
+        c.left = left
+        c.top = top
+        c.width = width
+        c.height = height
+        f = raw.v4l2_crop()
+        f.type = self.buffer_type
+        f.c = c
+        return self._ioctl(IOC.S_CROP, f)
+
     def set_ctrl(self, id, value):
         f = raw.v4l2_control()
         f.id = id
