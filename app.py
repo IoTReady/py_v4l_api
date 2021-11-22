@@ -40,8 +40,8 @@ brightness_intercept = 0
 best_brightness_diff = 1E10
 best_exposure = 0
 
-g_hue_optimal = 80
-g_hue_diff = 5
+g_hue_min = 80
+g_hue_max = 150
 
 g_contrast_optimal = 30
 g_contrast_diff = 3
@@ -125,7 +125,7 @@ def capture_and_calculate():
         "image": image_bytes,
         "brightness": estimate_brightness(image),
         "contrast": estimate_contrast(image),
-        "hue": 0
+        "hue": estimate_hue(image)
     }
     return result
 
@@ -144,7 +144,6 @@ def optimise():
         hue = ret['hue']
         contrast = ret['contrast']
         brightness_diff = g_brightness_optimal - brightness
-        hue_diff = g_hue_optimal - hue
         contrast_diff = g_contrast_optimal - contrast
         if abs(brightness_diff) < abs(best_brightness_diff):
             # An optimisation was found
@@ -152,8 +151,7 @@ def optimise():
             best_exposure = g_exposure_absolute
         is_brightness_optimised = not(g_enable_brightness_optimisation) or abs(
             brightness_diff) <= g_brightness_diff
-        is_hue_optimised = not(g_enable_hue_optimisation) or abs(
-            hue_diff) <= g_hue_diff
+        is_hue_optimised = not(g_enable_hue_optimisation) or not (g_hue_min <= hue <= g_hue_max) 
         is_contrast_optimised = not(g_enable_contrast_optimisation) or abs(
             contrast_diff) <= g_contrast_diff
         if not (is_brightness_optimised and is_hue_optimised and is_contrast_optimised):
@@ -217,8 +215,8 @@ def start(
         enable_hue_optimisation: bool = g_enable_hue_optimisation,
         enable_contrast_optimisation: bool = g_enable_contrast_optimisation,
         path: str = g_path,
-        hue_optimal: int = g_hue_optimal,
-        hue_diff: int = g_hue_diff,
+        hue_min: int = g_hue_min,
+        hue_max: int = g_hue_max,
         contrast_optimal: int = g_contrast_optimal,
         contrast_diff: int = g_contrast_diff,
         contrast_control_min: int = g_contrast_control_min,
@@ -244,8 +242,8 @@ def start(
     global g_enable_contrast_optimisation
     global g_brightness_optimal
     global g_brightness_diff
-    global g_hue_optimal
-    global g_hue_diff
+    global g_hue_min
+    global g_hue_max
     global g_contrast_optimal
     global g_contrast_diff
     global g_contrast_control_min
@@ -264,8 +262,8 @@ def start(
     g_enable_brightness_optimisation = enable_brightness_optimisation
     g_enable_hue_optimisation = enable_hue_optimisation
     g_enable_contrast_optimisation = enable_contrast_optimisation
-    g_hue_optimal = hue_optimal
-    g_hue_diff = hue_diff
+    g_hue_min = hue_min
+    g_hue_max = hue_max
     g_contrast_optimal = contrast_optimal
     g_contrast_diff = contrast_diff
     g_contrast_control_min = contrast_control_min
@@ -292,17 +290,17 @@ def start(
     print("Starting Camera")
     with Device.from_id(device) as cam:
         # Camera is now open and locked.
+        # And it's held open until we close it
         cam.video_capture.set_format(width, height, "MJPG")
+        # WIP: Cropping does not appear to be supported by this camera.
         #cam.video_capture.set_crop(xoffset, yoffset, width, height)
         stream = iter(cam)
         # Camera is started once we call next(stream)
-        # And it's held open until we close it
+        # We skip a few frames at the start
         for i in range(skip):
             next(stream)
         calc_optimal_exposure()
         app.run(host=host, port=port)
-        # cam.close()
-
 
 if __name__ == "__main__":
     typer.run(start)
