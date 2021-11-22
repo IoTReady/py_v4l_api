@@ -1,4 +1,12 @@
-typer
-flask
-zeroconf
-Pillow
+click==8.0.3
+Flask==2.0.2
+ifaddr==0.1.7
+itsdangerous==2.0.1
+Jinja2==3.0.3
+MarkupSafe==2.0.1
+Nuitka==0.6.17.7
+Pillow==8.4.0
+SCons==4.3.0
+typer==0.4.0
+Werkzeug==2.0.2
+zeroconf==0.37.0
