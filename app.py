@@ -4,16 +4,16 @@ import flask
 import typer
 from sys import exit
 from io import BytesIO
-from v4l2py import Device
-from PIL import Image, ImageStat
 from datetime import datetime
+from PIL import Image, ImageStat
+from v4l2py import Device
 from mdns import init_service
 
 app = flask.Flask(__name__)
 log = logging.getLogger(__name__)
 
-cam = None
-stream = None
+cam = Device.from_id(0)
+stream = iter(cam)
 
 default_host = "0.0.0.0"
 g_xoffset = 408
@@ -37,9 +37,7 @@ g_exposure_absolute_step = 25
 brightness_slope = 1
 brightness_intercept = 0
 best_brightness_diff = 1E10
-best_brightness = 0
 best_exposure = 0
-best_fpath = None
 
 g_hue_optimal = 80
 g_hue_diff = 5
@@ -51,7 +49,7 @@ g_contrast_control_min = 32
 g_contrast_control_max = 48
 g_contrast_control_step = 2
 
-g_max_attempts = 20
+g_max_attempts = 50
 
 
 def success(result):
@@ -84,40 +82,17 @@ def estimate_contrast(img):
     return stat.stddev[0]
 
 
-def is_single_color(img, threshold=0.99):
-    """
-    Checks if an image is predominantly a single colour.
-    This allows rejection of images without usable information.
-    Flow:
-    - Convert fpath into a PIL array
-    - Reduce palette of image to 256 bits
-    - Create grouping of colours and number of pixels
-    - Find percentage of pixels with most dominant colour
-    - Compare percentage with threshold and return result 
-    """
-    reduced = img.convert("P", palette=Image.WEB)
-    palette = reduced.getpalette()
-    palette = [palette[3*n:3*n+3] for n in range(256)]
-    colors = [n for n, m in reduced.getcolors()]
-    log.debug(colors)
-    return max(colors)/sum(colors) > threshold
-
-
 def calc_optimal_exposure():
     print("Calculating optimal exposure")
     global brightness_slope
     global brightness_intercept
     global g_exposure_absolute
     global best_brightness_diff
-    global best_fpath
-    global best_brightness
     g_exposure_absolute = g_exposure_absolute_min
     r1 = capture_and_calculate()
     g_exposure_absolute = g_exposure_absolute_max
     # Reset diff before next capture
     best_brightness_diff = 1E10
-    best_fpath = None
-    best_brightness = 0
     r2 = capture_and_calculate()
     brightness_slope = (r2['brightness'] - r1['brightness']) / \
         (g_exposure_absolute_max - g_exposure_absolute_min)
@@ -133,7 +108,12 @@ def calc_optimal_exposure():
 
 
 def capture_and_calculate():
+    cam.video_capture.set_exposure(g_exposure_absolute)
+    cam.video_capture.set_contrast(g_contrast_control)
     image = Image.open(BytesIO(next(stream)))
+    width = image.size[0]
+    height = image.size[1]
+    image = image.crop((g_xoffset, g_yoffset, width - g_xoffset, height - g_yoffset)) 
     result = {
         "exposure": g_exposure_absolute,
         "contrast_control": g_contrast_control,
@@ -310,10 +290,13 @@ def start(
     with Device.from_id(device) as cam:
         cam.video_capture.set_format(width, height, "MJPG")
         stream = iter(cam)
+        # Camera is opened once we call next(stream)
+        # And it's held open until we close it
         for i in range(skip):
             next(stream)
         calc_optimal_exposure()
         app.run(host=host, port=port)
+        #cam.close()
 
 
 if __name__ == "__main__":
