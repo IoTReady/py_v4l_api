@@ -198,6 +198,12 @@ def trigger():
     return success(result)
 
 
+@app.post("/logs")
+def store_logs():
+    print(flask.request.json)
+    log.debug(flask.request.json)
+    return success({})
+
 def start(
         host: str = default_host,
         port: int = 8000,
@@ -279,7 +285,7 @@ def start(
     g_max_attempts = max_attempts
     assert os.path.exists(g_path), f"Directory '{g_path}' does not exist"
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         filename=logfile,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
