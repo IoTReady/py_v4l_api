@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 import flask
 import typer
@@ -22,6 +23,7 @@ g_height = 2448
 g_xoffset = 408
 g_yoffset = 0
 g_path = "/tmp"
+g_device = 0
 
 g_enable_single_color_rejection = True
 g_enable_brightness_optimisation = True
@@ -56,13 +58,13 @@ g_max_attempts = 50
 def success(result):
     payload = {"ok": True, **result}
     log.debug(payload)
-    return payload
+    return flask.Response(json.dumps(payload), status = 200, mimetype='application/json')
 
 
-def error(message: str):
-    payload = {"ok": False, "time": datetime.now(), "message": message}
+def error(message: str, status=503):
+    payload = {"ok": False, "message": message}
     log.error(payload)
-    return payload
+    return flask.Response(json.dumps(payload), status = status, mimetype='application/json')
 
 
 def estimate_brightness(img):
@@ -108,12 +110,19 @@ def calc_optimal_exposure():
     print(f"\nOptimal Exposure: {g_exposure_absolute}\n")
 
 
+def exists():
+    device_path = f"/dev/video{g_device}"
+    return os.path.exists(device_path)
+
+
 def capture_and_calculate():
+    assert exists(), "Camera disconnected"
     cam.video_capture.set_exposure(g_exposure_absolute)
     cam.video_capture.set_contrast(g_contrast_control)
     # Skip one frame
     next(stream)
-    image_bytes = BytesIO(next(stream))
+    im = next(stream)
+    image_bytes = BytesIO(im)
     image = Image.open(image_bytes)
     width = image.size[0]
     height = image.size[1]
@@ -188,14 +197,18 @@ def optimise():
 
 @app.get("/")
 def index():
-    result = {"time": datetime.now()}
+    result = {"time": datetime.now().timestamp()}
     return success(result)
 
 
 @app.post("/")
 def trigger():
-    result = optimise()
-    return success(result)
+    try:
+        result = optimise()
+        return success(result)
+    except Exception as e:
+        print(str(e))
+        return error(message=str(e), status=404)
 
 
 @app.post("/logs")
@@ -207,7 +220,7 @@ def store_logs():
 def start(
         host: str = default_host,
         port: int = 8000,
-        device: int = 0,
+        device: int = g_device,
         width: int = 3264,
         height: int = 2448,
         xoffset: int = g_xoffset,
@@ -239,6 +252,7 @@ def start(
     if version:
         print("0.1.0")
         exit(0)
+    global g_device
     global g_path
     global g_xoffset
     global g_yoffset
@@ -262,6 +276,7 @@ def start(
     global g_max_attempts
     global cam
     global stream
+    g_device = device
     g_xoffset = xoffset
     g_yoffset = yoffset
     g_enable_single_color_rejection = enable_single_color_rejection
